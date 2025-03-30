@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "936915784399",
+    "project_id": "flashreporter-fae91",
+    "storage_bucket": "flashreporter-fae91.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:936915784399:android:dfa9430ff511b15fed1dba",
+        "android_client_info": {
+          "package_name": "com.flashreporter"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA9xnTB4PyxUn2524p-yJ9GbkLl-Aszirc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
