@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:dart_quill_delta/dart_quill_delta.dart' as qDelta;
 import 'package:flutter_quill/flutter_quill.dart' as quill;
-//import 'package:quill_delta/quill_delta.dart' as qDelta;
 import 'package:provider/provider.dart';
 import '../../services/document_service.dart';
 import '../../services/report_maker.dart';
+import '/services/audit_service.dart';
+import 'audit_log_viewer_screen.dart'; // Add audit log screen import
 
 class DocumentEditorScreen extends StatefulWidget {
   final String? documentId;
@@ -32,40 +33,68 @@ class _DocumentEditorScreenState extends State<DocumentEditorScreen> {
 
   Future<void> _initializeDocument() async {
     final docService = context.read<DocumentService>();
-    if (widget.documentId != null) {
-      await docService.loadDocument(widget.documentId!);
-      _titleController.text = docService.currentDoc.title;
-      final initialContent = docService.currentDoc.deltaContent != null
-          ? quill.Document.fromJson(docService.currentDoc.deltaContent!)
-          : quill.Document();
-      _controller = quill.QuillController(
-        document: initialContent,
-        selection: const TextSelection.collapsed(offset: 0),
-      );
-    } else {
-      _controller = quill.QuillController.basic();
+    final auditService = context.read<AuditService>();
+
+    try {
+      if (widget.documentId != null) {
+        await docService.loadDocument(widget.documentId!);
+        _titleController.text = docService.currentDoc.title;
+        
+        await auditService.logAction(
+          documentId: widget.documentId!,
+          action: 'document_opened',
+          details: 'Document opened by user',
+          deltaContent: {'ops': docService.currentDoc.deltaContent ?? []}, // Wrapped in map
+        );
+
+        final initialContent = docService.currentDoc.deltaContent != null
+            ? quill.Document.fromJson(docService.currentDoc.deltaContent!)
+            : quill.Document();
+        _controller = quill.QuillController(
+          document: initialContent,
+          selection: const TextSelection.collapsed(offset: 0),
+        );
+      } else {
+        _controller = quill.QuillController.basic();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Initialization error: ${e.toString()}')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
-    setState(() => _isLoading = false);
   }
 
   Future<void> _saveDocument() async {
+    final docService = context.read<DocumentService>();
+    final auditService = context.read<AuditService>();
+
     if (_titleController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter a title')),
       );
       return;
     }
+
     setState(() => _isSaving = true);
     try {
-      // Convert the document delta to JSON.
       final deltaJson = _controller.document.toDelta().toJson();
+      await docService.saveDocument(
+        title: _titleController.text,
+        deltaContent: deltaJson,
+        id: widget.documentId,
+      );
 
-      // Instead of converting JSON to a Delta object, simply save deltaJson.
-      await context.read<DocumentService>().saveDocument(
-            title: _titleController.text,
-            deltaContent: deltaJson,
-            id: widget.documentId,
-          );
+      await auditService.logAction(
+        documentId: widget.documentId ?? 'new_document',
+        action: 'document_saved',
+        details: 'Document version saved',
+        deltaContent: {'ops': deltaJson}, // Wrapped in map
+      );
+
       if (mounted) Navigator.pop(context);
     } catch (e) {
       if (mounted) {
@@ -79,12 +108,15 @@ class _DocumentEditorScreenState extends State<DocumentEditorScreen> {
   }
 
   Future<void> _exportDocument() async {
+    final auditService = context.read<AuditService>();
+
     if (_titleController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter a title before exporting')),
       );
       return;
     }
+
     setState(() => _isExporting = true);
     try {
       final exportedFile = await ReportMaker.generate(
@@ -92,6 +124,14 @@ class _DocumentEditorScreenState extends State<DocumentEditorScreen> {
         contentBlocks: _convertDeltaToBlocks(_controller.document.toDelta()),
         templatePath: 'assets/templates/default.docx',
       );
+
+      await auditService.logAction(
+        documentId: widget.documentId ?? 'new_document',
+        action: 'document_exported',
+        details: 'Exported to: ${exportedFile.path}',
+        deltaContent: {'ops': _controller.document.toDelta().toJson()}, // Wrapped in map
+      );
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Exported to ${exportedFile.path}')),
@@ -145,6 +185,24 @@ class _DocumentEditorScreenState extends State<DocumentEditorScreen> {
               ?.copyWith(color: Colors.white),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.history, color: Colors.white),
+            onPressed: () {
+              if (widget.documentId != null) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => AuditLogScreen(documentId: widget.documentId!),
+                  ),
+                );
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Save document first to view history')),
+                );
+              }
+            },
+            tooltip: 'View Activity History',
+          ),
           IconButton(
             icon: _isExporting
                 ? const CircularProgressIndicator(color: Colors.white)
