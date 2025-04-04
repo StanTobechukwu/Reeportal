@@ -1,246 +1,153 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:dart_quill_delta/dart_quill_delta.dart' as qDelta;
 import 'package:flutter_quill/flutter_quill.dart' as quill;
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+import '../../models/document/document.dart';
 import '../../services/document_service.dart';
-import '../../services/report_maker.dart';
-import '/services/audit_service.dart';
-import 'audit_log_viewer_screen.dart'; // Add audit log screen import
+import '../../repositories/storage_repository.dart';
 
-class DocumentEditorScreen extends StatefulWidget {
-  final String? documentId;
-  const DocumentEditorScreen({this.documentId, Key? key}) : super(key: key);
-
-  @override
-  State<DocumentEditorScreen> createState() => _DocumentEditorScreenState();
+/// Extension to add an 'unset' getter to quill.Attribute.
+extension AttributeExtension on quill.Attribute {
+  quill.Attribute get unset => quill.Attribute(key, scope, null);
 }
 
-class _DocumentEditorScreenState extends State<DocumentEditorScreen> {
+class EditorScreen extends StatefulWidget {
+  final String documentId;
+  const EditorScreen({super.key, required this.documentId});
+
+  @override
+  State<EditorScreen> createState() => _EditorScreenState();
+}
+
+class _EditorScreenState extends State<EditorScreen> {
   late quill.QuillController _controller;
-  late ScrollController _scrollController;
-  final TextEditingController _titleController = TextEditingController();
-  final FocusNode _focusNode = FocusNode();
-  bool _isLoading = true;
-  bool _isSaving = false;
-  bool _isExporting = false;
+  final _focusNode = FocusNode();
+  final _scrollController = ScrollController();
+  bool _isInitialized = false;
+  final ImagePicker _imagePicker = ImagePicker();
 
   @override
   void initState() {
     super.initState();
-    _scrollController = ScrollController();
-    _initializeDocument();
+    _initializeEditor();
   }
 
-  Future<void> _initializeDocument() async {
-    final docService = context.read<DocumentService>();
-    final auditService = context.read<AuditService>();
-
-    try {
-      if (widget.documentId != null) {
-        await docService.loadDocument(widget.documentId!);
-        _titleController.text = docService.currentDoc.title;
-        
-        await auditService.logAction(
-          documentId: widget.documentId!,
-          action: 'document_opened',
-          details: 'Document opened by user',
-          deltaContent: {'ops': docService.currentDoc.deltaContent ?? []}, // Wrapped in map
-        );
-
-        final initialContent = docService.currentDoc.deltaContent != null
-            ? quill.Document.fromJson(docService.currentDoc.deltaContent!)
-            : quill.Document();
-        _controller = quill.QuillController(
-          document: initialContent,
-          selection: const TextSelection.collapsed(offset: 0),
-        );
-      } else {
-        _controller = quill.QuillController.basic();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Initialization error: ${e.toString()}')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _saveDocument() async {
-    final docService = context.read<DocumentService>();
-    final auditService = context.read<AuditService>();
-
-    if (_titleController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a title')),
-      );
-      return;
-    }
-
-    setState(() => _isSaving = true);
-    try {
-      final deltaJson = _controller.document.toDelta().toJson();
-      await docService.saveDocument(
-        title: _titleController.text,
-        deltaContent: deltaJson,
-        id: widget.documentId,
-      );
-
-      await auditService.logAction(
-        documentId: widget.documentId ?? 'new_document',
-        action: 'document_saved',
-        details: 'Document version saved',
-        deltaContent: {'ops': deltaJson}, // Wrapped in map
-      );
-
-      if (mounted) Navigator.pop(context);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Save failed: ${e.toString()}')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isSaving = false);
-    }
-  }
-
-  Future<void> _exportDocument() async {
-    final auditService = context.read<AuditService>();
-
-    if (_titleController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a title before exporting')),
-      );
-      return;
-    }
-
-    setState(() => _isExporting = true);
-    try {
-      final exportedFile = await ReportMaker.generate(
-        title: _titleController.text,
-        contentBlocks: _convertDeltaToBlocks(_controller.document.toDelta()),
-        templatePath: 'assets/templates/default.docx',
-      );
-
-      await auditService.logAction(
-        documentId: widget.documentId ?? 'new_document',
-        action: 'document_exported',
-        details: 'Exported to: ${exportedFile.path}',
-        deltaContent: {'ops': _controller.document.toDelta().toJson()}, // Wrapped in map
-      );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Exported to ${exportedFile.path}')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Export failed: ${e.toString()}')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isExporting = false);
-    }
-  }
-
-  List<Map<String, dynamic>> _convertDeltaToBlocks(qDelta.Delta delta) {
-    final doc = quill.Document.fromDelta(delta);
-    return [
-      {
-        'type': 'heading',
-        'text': _titleController.text,
-        'level': 1,
-      },
-      {
-        'type': 'paragraph',
-        'text': doc.toPlainText(),
-      },
-    ];
+  Future<void> _initializeEditor() async {
+    final service = context.read<DocumentService>();
+    await service.loadDocument(widget.documentId);
+    
+    _controller = quill.QuillController(
+      document: service.currentDoc.deltaContent != null
+          ? quill.Document.fromJson(service.currentDoc.deltaContent!)
+          : quill.Document(),
+      selection: const TextSelection.collapsed(offset: 0),
+    );
+    setState(() => _isInitialized = true);
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
+    if (!_isInitialized) return _buildLoading();
+
+    final service = context.watch<DocumentService>();
+    
     return Scaffold(
       appBar: AppBar(
-        title: TextField(
-          controller: _titleController,
-          decoration: const InputDecoration(
-            hintText: 'Document Title',
-            border: InputBorder.none,
-            hintStyle: TextStyle(color: Colors.white70),
-          ),
-          style: Theme.of(context)
-              .textTheme
-              .titleLarge
-              ?.copyWith(color: Colors.white),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.history, color: Colors.white),
-            onPressed: () {
-              if (widget.documentId != null) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => AuditLogScreen(documentId: widget.documentId!),
-                  ),
-                );
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Save document first to view history')),
-                );
-              }
-            },
-            tooltip: 'View Activity History',
-          ),
-          IconButton(
-            icon: _isExporting
-                ? const CircularProgressIndicator(color: Colors.white)
-                : const Icon(Icons.file_download, color: Colors.white),
-            onPressed: _isExporting ? null : _exportDocument,
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0),
-            child: _isSaving
-                ? const CircularProgressIndicator(color: Colors.white)
-                : IconButton(
-                    icon: const Icon(Icons.save, color: Colors.white),
-                    onPressed: _saveDocument,
-                  ),
-          ),
-        ],
+        title: Text(service.currentDoc.title),
+        actions: [_buildSaveButton(service)],
       ),
       body: Column(
         children: [
           Expanded(
-            child: Container(
-              color: Colors.grey[50],
-              child: quill.QuillEditor.basic(
-                controller: _controller,
-              ),
+            child: quill.QuillEditor.basic(
+              controller: _controller,
+              focusNode: _focusNode,
+              scrollController: _scrollController,
             ),
+          ),
+          _buildToolbar(context),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLoading() => const Center(child: CircularProgressIndicator());
+
+  Widget _buildSaveButton(DocumentService service) {
+    return IconButton(
+      icon: const Icon(Icons.save),
+      onPressed: () => _saveDocument(service),
+    );
+  }
+
+  Widget _buildToolbar(BuildContext context) {
+    return Container(
+      color: Colors.grey[200],
+      child: Row(
+        children: [
+          _buildStyleButton(Icons.format_bold, quill.Attribute.bold),
+          _buildStyleButton(Icons.format_italic, quill.Attribute.italic),
+          IconButton(
+            icon: const Icon(Icons.image),
+            onPressed: () => _addImage(context),
           ),
         ],
       ),
     );
   }
 
+  Widget _buildStyleButton(IconData icon, quill.Attribute attribute) {
+    return IconButton(
+      icon: Icon(icon),
+      onPressed: () => _toggleStyle(attribute),
+    );
+  }
+
+  // Updated _toggleStyle method using the 'unset' extension.
+  void _toggleStyle(quill.Attribute attribute) {
+    final formats = _controller.getSelectionStyle().attributes;
+    if (formats.containsKey(attribute.key)) {
+      _controller.formatSelection(attribute.unset);
+    } else {
+      _controller.formatSelection(attribute);
+    }
+  }
+
+  Future<void> _addImage(BuildContext context) async {
+    final pickedFile = await _imagePicker.pickImage(source: ImageSource.gallery);
+    if (pickedFile == null) return;
+
+    final storage = context.read<StorageRepository>();
+    final imageFile = File(pickedFile.path);
+    final imageUrl = await storage.uploadImage(imageFile, 'images');
+
+    final index = _controller.selection.baseOffset;
+    final length = _controller.selection.extentOffset - index;
+
+    _controller.document.replace(
+      index,
+      length,
+      quill.BlockEmbed.image(imageUrl),
+    );
+  }
+
+  Future<void> _saveDocument(DocumentService service) async {
+    final currentDoc = service.currentDoc;
+    await service.saveDocument(
+      title: currentDoc.title,
+      elements: currentDoc.elements,
+      pages: currentDoc.pages,
+      deltaContent: _controller.document.toDelta().toJson(),
+      id: currentDoc.id,
+    );
+  }
+
   @override
   void dispose() {
     _controller.dispose();
-    _scrollController.dispose();
-    _titleController.dispose();
     _focusNode.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 }
