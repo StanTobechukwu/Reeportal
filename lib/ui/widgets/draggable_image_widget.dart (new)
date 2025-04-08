@@ -1,0 +1,11 @@
+class DraggableImageWidget extends StatelessWidget {
+  final DocumentElement element;
+  final Function(Offset) onPositionUpdate;
+
+  const DraggableImageWidget({/* ... */});
+
+  @override
+  Widget build(BuildContext context) {
+    return Draggable(/* ... */);
+  }
+}

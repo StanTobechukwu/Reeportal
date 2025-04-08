@@ -1,0 +1,2 @@
+C:/Users/Dr. Stanley/Desktop/reporter/repoter1/android/app/.cxx/Debug/6m1z1f1h/armeabi-v7a/CMakeFiles/edit_cache.dir
+C:/Users/Dr. Stanley/Desktop/reporter/repoter1/android/app/.cxx/Debug/6m1z1f1h/armeabi-v7a/CMakeFiles/rebuild_cache.dir

@@ -1,26 +1,29 @@
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart';
 
 class AuthRepository {
-  final FirebaseAuth _auth;
-
-  // Constructor allows both default and test instances
-  AuthRepository({FirebaseAuth? auth}) : _auth = auth ?? FirebaseAuth.instance;
-
-  Future<User?> signInWithEmail(String email, String password) async {
-    try {
-      final credential = await _auth.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-      return credential.user;
-    } on FirebaseAuthException catch (e) {
-      debugPrint('Login error: ${e.code}');
-      rethrow;
-    }
-  }
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
   Stream<User?> get authStateChanges => _auth.authStateChanges();
+
+  Future<UserCredential> signInWithEmailAndPassword(
+    String email, 
+    String password
+  ) async {
+    return await _auth.signInWithEmailAndPassword(
+      email: email,
+      password: password,
+    );
+  }
+
+  Future<UserCredential> createUserWithEmailAndPassword(
+    String email, 
+    String password
+  ) async {
+    return await _auth.createUserWithEmailAndPassword(
+      email: email,
+      password: password,
+    );
+  }
 
   Future<void> signOut() async => await _auth.signOut();
 

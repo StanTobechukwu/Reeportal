@@ -1,115 +1,138 @@
-// screens/export_config_screen.dart
 import 'package:flutter/material.dart';
-import 'package:file_picker/file_picker.dart';
-import '../services/document_service.dart';
+import 'package:flutter_quill/flutter_quill.dart' as quill;
+import 'package:provider/provider.dart';
+import '../../services/document_service.dart';
 
-class ExportConfigScreen extends StatefulWidget {
-  final String documentId;
-  const ExportConfigScreen({required this.documentId, super.key});
+class DocumentEditorScreen extends StatefulWidget {
+  final String? documentId;
+  const DocumentEditorScreen({this.documentId, Key? key}) : super(key: key);
 
   @override
-  State<ExportConfigScreen> createState() => _ExportConfigScreenState();
+  State<DocumentEditorScreen> createState() => _DocumentEditorScreenState();
 }
 
-class _ExportConfigScreenState extends State<ExportConfigScreen> {
-  String? _selectedTemplate;
-  String? _signaturePath;
+class _DocumentEditorScreenState extends State<DocumentEditorScreen> {
+  late quill.QuillController _controller;
+  final TextEditingController _titleController = TextEditingController();
+  bool _isLoading = true;
+  bool _isSaving = false;
 
-  Future<void> _selectTemplate() async {
-    final result = await FilePicker.platform.pickFile(
-      type: FileType.custom,
-      allowedExtensions: ['docx'],
-    );
-    if (result != null) {
-      setState(() => _selectedTemplate = result.path);
-    }
+  @override
+  void initState() {
+    super.initState();
+    _initializeDocument();
   }
 
-  Future<void> _uploadSignature() async {
-    final result = await FilePicker.platform.pickFile(
-      type: FileType.image,
+  Future<void> _initializeDocument() async {
+    final docService = Provider.of<DocumentService>(
+      context,
+      listen: false,
     );
-    if (result != null) {
-      setState(() => _signaturePath = result.path);
+    
+    if (widget.documentId != null) {
+      await docService.loadDocument(widget.documentId!);
+      _titleController.text = docService.currentDocument.title;
+      final initialContent = docService.currentDocument.deltaContent != null
+          ? quill.Document.fromJson(docService.currentDocument.deltaContent!)
+          : quill.Document();
+      _controller = quill.QuillController(
+        document: initialContent,
+        selection: const TextSelection.collapsed(offset: 0),
+      );
+    } else {
+      _controller = quill.QuillController.basic();
+    }
+    setState(() => _isLoading = false);
+  }
+
+  Future<void> _saveDocument() async {
+    if (_titleController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a title')),
+      );
+      return;
+    }
+    
+    setState(() => _isSaving = true);
+    try {
+      final docService = Provider.of<DocumentService>(
+        context,
+        listen: false,
+      );
+      await docService.saveDocument(
+        title: _titleController.text,
+        //elements: docService.currentDocument.elements, // Add elements parameter
+        deltaContent: _controller.document.toDelta().toJson(),
+        id: widget.documentId,
+      );
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Save failed: ${e.toString()}')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
     return Scaffold(
-      appBar: AppBar(title: const Text('Export Configuration')),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            _TemplateSelector(
-              selectedPath: _selectedTemplate,
-              onSelect: _selectTemplate,
-            ),
-            const SizedBox(height: 20),
-            _SignatureUploader(
-              signaturePath: _signaturePath,
-              onUpload: _uploadSignature,
-            ),
-            const Spacer(),
-            ElevatedButton(
-              onPressed: () {
-                context.read<DocumentService>().setExportConfig(
-                  widget.documentId,
-                  templatePath: _selectedTemplate,
-                  signaturePath: _signaturePath,
-                );
-                Navigator.pop(context);
-              },
-              child: const Text('Save Configuration'),
-            ),
-          ],
+      appBar: AppBar(
+        title: TextField(
+          controller: _titleController,
+          decoration: const InputDecoration(
+            hintText: 'Document Title',
+            border: InputBorder.none,
+            hintStyle: TextStyle(color: Colors.white70),
+          ),
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                color: Colors.white,
+              ),
         ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            child: _isSaving
+                ? const CircularProgressIndicator(color: Colors.white)
+                : IconButton(
+                    icon: const Icon(Icons.save, color: Colors.white),
+                    onPressed: _saveDocument,
+                  ),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          quill.QuillToolbar.simple(
+            configurations: const quill.QuillSimpleToolbarConfigurations(),
+            controller: _controller,
+          ),
+          Expanded(
+            child: Container(
+              color: Colors.grey[50],
+              child: quill.QuillEditor.basic(
+                controller: _controller,
+                configurations: const quill.QuillEditorConfigurations(),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
-}
-
-class _TemplateSelector extends StatelessWidget {
-  final String? selectedPath;
-  final VoidCallback onSelect;
-  
-  const _TemplateSelector({required this.selectedPath, required this.onSelect});
 
   @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: ListTile(
-        leading: const Icon(Icons.description),
-        title: const Text('Select DOCX Template'),
-        subtitle: Text(selectedPath ?? 'No template selected'),
-        trailing: IconButton(
-          icon: const Icon(Icons.folder_open),
-          onPressed: onSelect,
-        ),
-      ),
-    );
-  }
-}
-
-class _SignatureUploader extends StatelessWidget {
-  final String? signaturePath;
-  final VoidCallback onUpload;
-  
-  const _SignatureUploader({required this.signaturePath, required this.onUpload});
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: ListTile(
-        leading: const Icon(Icons.draw),
-        title: const Text('Upload Signature'),
-        subtitle: Text(signaturePath ?? 'No signature uploaded'),
-        trailing: IconButton(
-          icon: const Icon(Icons.upload),
-          onPressed: onUpload,
-        ),
-      ),
-    );
+  void dispose() {
+    _controller.dispose();
+    _titleController.dispose();
+    super.dispose();
   }
 }

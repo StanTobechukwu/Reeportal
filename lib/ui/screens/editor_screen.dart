@@ -7,14 +7,13 @@ import '../../models/document/document.dart';
 import '../../services/document_service.dart';
 import '../../repositories/storage_repository.dart';
 
-/// Extension to add an 'unset' getter to quill.Attribute.
-extension AttributeExtension on quill.Attribute {
+extension AttributeUnsetExtension on quill.Attribute {
   quill.Attribute get unset => quill.Attribute(key, scope, null);
 }
 
 class EditorScreen extends StatefulWidget {
-  final String documentId;
-  const EditorScreen({super.key, required this.documentId});
+  final String? documentId;
+  const EditorScreen({super.key, this.documentId});
 
   @override
   State<EditorScreen> createState() => _EditorScreenState();
@@ -22,8 +21,9 @@ class EditorScreen extends StatefulWidget {
 
 class _EditorScreenState extends State<EditorScreen> {
   late quill.QuillController _controller;
-  final _focusNode = FocusNode();
-  final _scrollController = ScrollController();
+  final FocusNode _focusNode = FocusNode();
+  final ScrollController _scrollController = ScrollController();
+  final TextEditingController _titleController = TextEditingController();
   bool _isInitialized = false;
   final ImagePicker _imagePicker = ImagePicker();
 
@@ -35,26 +35,44 @@ class _EditorScreenState extends State<EditorScreen> {
 
   Future<void> _initializeEditor() async {
     final service = context.read<DocumentService>();
-    await service.loadDocument(widget.documentId);
     
+    if (widget.documentId != null) {
+      await service.loadDocument(widget.documentId!);
+      _titleController.text = service.currentDocument.title;
+    }
+
     _controller = quill.QuillController(
-      document: service.currentDoc.deltaContent != null
-          ? quill.Document.fromJson(service.currentDoc.deltaContent!)
+      document: service.currentDocument.deltaContent != null
+          ? quill.Document.fromJson(service.currentDocument.deltaContent!)
           : quill.Document(),
       selection: const TextSelection.collapsed(offset: 0),
     );
+
     setState(() => _isInitialized = true);
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_isInitialized) return _buildLoading();
+    if (!_isInitialized) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
 
     final service = context.watch<DocumentService>();
     
     return Scaffold(
       appBar: AppBar(
-        title: Text(service.currentDoc.title),
+        title: TextField(
+          controller: _titleController,
+          decoration: const InputDecoration(
+            hintText: 'Document Title',
+            border: InputBorder.none,
+          ),
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                color: Colors.white,
+              ),
+        ),
         actions: [_buildSaveButton(service)],
       ),
       body: Column(
@@ -71,8 +89,6 @@ class _EditorScreenState extends State<EditorScreen> {
       ),
     );
   }
-
-  Widget _buildLoading() => const Center(child: CircularProgressIndicator());
 
   Widget _buildSaveButton(DocumentService service) {
     return IconButton(
@@ -104,14 +120,13 @@ class _EditorScreenState extends State<EditorScreen> {
     );
   }
 
-  // Updated _toggleStyle method using the 'unset' extension.
   void _toggleStyle(quill.Attribute attribute) {
-    final formats = _controller.getSelectionStyle().attributes;
-    if (formats.containsKey(attribute.key)) {
-      _controller.formatSelection(attribute.unset);
-    } else {
-      _controller.formatSelection(attribute);
-    }
+    final currentFormat = _controller.getSelectionStyle().attributes;
+    _controller.formatSelection(
+      currentFormat.containsKey(attribute.key) 
+          ? attribute.unset 
+          : attribute
+    );
   }
 
   Future<void> _addImage(BuildContext context) async {
@@ -119,28 +134,34 @@ class _EditorScreenState extends State<EditorScreen> {
     if (pickedFile == null) return;
 
     final storage = context.read<StorageRepository>();
-    final imageFile = File(pickedFile.path);
-    final imageUrl = await storage.uploadImage(imageFile, 'images');
-
+     final fileBytes = await pickedFile.readAsBytes();
+      final path = 'images/${DateTime.now().millisecondsSinceEpoch}.jpg';
+       final imageUrl = await storage.uploadFile(
+    path: path,
+    fileBytes: fileBytes,
+    contentType: 'image/jpeg', // Adjust the content type if needed
+  );
+   // final imageUrl = await storage.uploadImage(File(pickedFile.path), 'images');
+    
     final index = _controller.selection.baseOffset;
-    final length = _controller.selection.extentOffset - index;
-
-    _controller.document.replace(
-      index,
-      length,
-      quill.BlockEmbed.image(imageUrl),
-    );
+    _controller.document.insert(index, quill.BlockEmbed.image(imageUrl));
   }
 
   Future<void> _saveDocument(DocumentService service) async {
-    final currentDoc = service.currentDoc;
+    final deltaContent = _controller.document.toDelta().toJson().cast<Map<String, dynamic>>();
+    
     await service.saveDocument(
-      title: currentDoc.title,
-      elements: currentDoc.elements,
-      pages: currentDoc.pages,
-      deltaContent: _controller.document.toDelta().toJson(),
-      id: currentDoc.id,
+      title: _titleController.text,
+      //elements: service.currentDocument.elements,
+      deltaContent: deltaContent,
+      id: widget.documentId,
     );
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Document saved successfully')),
+      );
+    }
   }
 
   @override
@@ -148,6 +169,7 @@ class _EditorScreenState extends State<EditorScreen> {
     _controller.dispose();
     _focusNode.dispose();
     _scrollController.dispose();
+    _titleController.dispose();
     super.dispose();
   }
 }

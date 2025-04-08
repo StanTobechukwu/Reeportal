@@ -1,27 +1,31 @@
-import 'package:quill_delta/quill_delta.dart';
+import 'dart:convert';
+import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
+import 'package:cross_file/cross_file.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:uuid/uuid.dart';
 import '../models/document/document.dart';
 import '../repositories/firestore_repository.dart';
 
 class DocumentService with ChangeNotifier {
-  final FirestoreRepository _repo;
-  Document _currentDoc = Document.empty;
+  final FirestoreRepository _repository;
+  final Uuid _uuid = const Uuid();
+
+  Document _currentDocument = Document.empty;
   bool _isLoading = false;
   String? _error;
 
-  DocumentService(this._repo);
+  DocumentService(this._repository);
 
-  // Getters
-  Document get currentDoc => _currentDoc;
+  Document get currentDocument => _currentDocument;
   bool get isLoading => _isLoading;
   String? get error => _error;
 
   Future<void> loadDocument(String id) async {
     _setLoading(true);
     try {
-      _currentDoc = await _repo.getDocument(id) ?? Document.empty;
+      final doc = await _repository.getDocument(id);
+      _currentDocument = doc ?? Document.empty;
       _error = null;
     } catch (e) {
       _handleError('Failed to load document: ${e.toString()}');
@@ -32,29 +36,24 @@ class DocumentService with ChangeNotifier {
 
   Future<bool> saveDocument({
     required String title,
-    required List<dynamic> deltaContent,
+    //required List<DocumentElement> elements,
+    required List<Map<String, dynamic>> deltaContent,
     String? id,
   }) async {
     _setLoading(true);
     try {
-      // Convert the stored JSON delta into a Quill document.
-      final document = quill.Document.fromJson(deltaContent);
-      final plainText = document.toPlainText();
-
-      _currentDoc = _currentDoc.copyWith(
-        id: id ?? _currentDoc.id,
+      _currentDocument = _currentDocument.copyWith(
         title: title,
-        content: plainText,
+        //elements: elements,
         deltaContent: deltaContent,
         updatedAt: DateTime.now(),
       );
 
-      if (_currentDoc.id.isEmpty) {
-        _currentDoc = await _repo.createDocument(_currentDoc);
+      if (_currentDocument.id.isEmpty) {
+        _currentDocument = await _repository.createDocument(_currentDocument);
       } else {
-        await _repo.updateDocument(_currentDoc);
+        await _repository.updateDocument(_currentDocument);
       }
-
       _error = null;
       return true;
     } catch (e) {
@@ -65,15 +64,70 @@ class DocumentService with ChangeNotifier {
     }
   }
 
-  static String deltaToPlainText(List<dynamic> delta) {
-    final document = quill.Document.fromJson(delta);
-    return document.toPlainText();
+  Future<void> addImageElement(XFile image, ui.Offset position) async {
+    _setLoading(true);
+    try {
+      final bytes = await image.readAsBytes();
+      final imageElement = DocumentElement.image(
+        'data:image/${_getFileExtension(image.name)};base64,${base64Encode(bytes)}',
+        position,
+      ).copyWith(
+        properties: {
+          'id': _uuid.v4(),
+          ...DocumentElement.image(
+            '', 
+            position,
+          ).properties,
+        },
+      );
+
+      _currentDocument = _currentDocument.copyWith(
+        elements: [..._currentDocument.elements, imageElement],
+      );
+      await _repository.updateDocument(_currentDocument);
+      _error = null;
+    } catch (e) {
+      _handleError('Failed to add image: ${e.toString()}');
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  Future<void> updateElementPosition(String elementId, ui.Offset newPosition) async {
+    _setLoading(true);
+    try {
+      final updatedElements = _currentDocument.elements.map((element) {
+        if (element.properties['id'] == elementId) {
+          return element.copyWith(
+            properties: {
+              ...element.properties,
+              'posX': newPosition.dx,
+              'posY': newPosition.dy,
+            },
+          );
+        }
+        return element;
+      }).toList();
+
+      _currentDocument = _currentDocument.copyWith(elements: updatedElements);
+      await _repository.updateDocument(_currentDocument);
+      _error = null;
+    } catch (e) {
+      _handleError('Failed to update position: ${e.toString()}');
+    } finally {
+      _setLoading(false);
+    }
   }
 
   void clearDocument() {
-    _currentDoc = Document.empty;
+    _currentDocument = Document.empty;
     _error = null;
     notifyListeners();
+  }
+
+  String _getFileExtension(String filename) {
+    final extStart = filename.lastIndexOf('.');
+    return extStart == -1 ? '' : filename.substring(extStart + 1);
   }
 
   void _setLoading(bool state) {
