@@ -1,3 +1,4 @@
+//lib/models/document/section.dart
 import 'package:flutter/foundation.dart';
 import '../shared/enums.dart';
 import '../shared/metadata.dart';

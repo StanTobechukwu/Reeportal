@@ -1,6 +1,6 @@
 buildscript {
     ext {
-        kotlin_version = '1.9.22'  // Match your Kotlin version
+        kotlin_version = '2.1.0'  // Match your Kotlin version
         gradle_version = '8.2.1'    // Compatible with AGP 8.1
     }
     repositories {

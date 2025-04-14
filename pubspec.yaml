@@ -5,28 +5,37 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.5.4
+  sdk: ">=2.17.0 <4.0.0"
 
 dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
-  firebase_core: ^2.15.0
-  cloud_firestore: ^4.9.1
-  firebase_storage: ^11.6.0
-  firebase_auth: ^4.11.1
-  image_picker: ^0.8.7
+  firebase_core: ^3.13.0
+  cloud_firestore: ^5.6.6
+  firebase_storage: ^12.4.5
+  firebase_auth: ^5.5.2
+  image_picker: ^1.1.2
   path_provider: ^2.1.1
   pdf: ^3.10.0
   provider: ^6.0.5
-  flutter_quill: ^10.8.5
+  flutter_quill: ^11.2.0
+  quill_delta: ^3.0.0-nullsafety.2
+  #quill_delta: ^2.0.0
+  #image: ^3.0.8
   intl: ^0.19.0
-  printing: ^5.11.0
-  firebase_crashlytics: ^3.0.18
+  #printing: ^5.11.0
+  firebase_crashlytics: ^4.3.5
   equatable: ^2.0.5
   docx_template: ^0.4.0
+  signature: ^6.0.0
+  image: ^4.0.17
+  printing: ^5.9.1
+  xml: ^6.4.2
+
   #file_picker: ^5.2.6
   uuid: ^4.3.1
+  share_plus: 10.1.4
   #docx: ^0.5.0
   #interactive_viewer: ^2.0.0
   #flutter_portabletext: ^0.9.0
@@ -34,9 +43,12 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^4.0.0
+  flutter_lints: ^5.0.0
 
 dependency_overrides:
   ffi: ^2.1.0
+  #image: ^3.0.8
+  quill_delta: ^3.0.0-nullsafety.2
+  #xml: ^6.4.2
 flutter:
   uses-material-design: true

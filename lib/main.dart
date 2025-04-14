@@ -59,14 +59,20 @@ class MyApp extends StatelessWidget {
       ),
       routes: {
         '/editor': (context) => const EditorScreen(),
-        //'/preview': (context) => const PreviewScreen(),
+        // Note: We remove the direct '/preview' route and use onGenerateRoute.
       },
       onGenerateRoute: (settings) {
-        // Handle preview route with document ID
+        // Handle the '/preview' route.
         if (settings.name == '/preview') {
-          final args = settings.arguments as String;
+          // Expect that settings.arguments is a Map<String, dynamic> with keys:
+          // 'documentId', 'deltaContent', and 'imageColumn'.
+          final args = settings.arguments as Map<String, dynamic>? ?? {};
           return MaterialPageRoute(
-            builder: (context) => PreviewScreen(documentId: args),
+            builder: (context) => PreviewScreen(
+              documentId: args['documentId'] ?? '',
+              deltaContent: args['deltaContent'] ?? [{'insert': '\n'}],
+              imageColumn: args['imageColumn'] ?? [],
+            ),
           );
         }
         return null;
@@ -74,3 +80,4 @@ class MyApp extends StatelessWidget {
     );
   }
 }
+

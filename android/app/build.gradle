@@ -13,7 +13,7 @@ android {
 
     defaultConfig {
         applicationId "com.flashreporter"
-        minSdkVersion flutter.minSdkVersion
+        minSdkVersion 23
         targetSdkVersion flutter.targetSdkVersion
         versionCode flutter.versionCode.toInteger()
         versionName flutter.versionName

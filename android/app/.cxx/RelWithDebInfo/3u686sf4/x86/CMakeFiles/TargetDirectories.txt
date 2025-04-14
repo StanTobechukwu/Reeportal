@@ -1,0 +1,2 @@
+C:/Users/Dr. Stanley/Desktop/reporter/repoter1/android/app/.cxx/RelWithDebInfo/3u686sf4/x86/CMakeFiles/edit_cache.dir
+C:/Users/Dr. Stanley/Desktop/reporter/repoter1/android/app/.cxx/RelWithDebInfo/3u686sf4/x86/CMakeFiles/rebuild_cache.dir
