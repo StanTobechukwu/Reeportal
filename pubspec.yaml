@@ -21,10 +21,7 @@ dependencies:
   provider: ^6.0.5
   flutter_quill: ^11.2.0
   quill_delta: ^3.0.0-nullsafety.2
-  #quill_delta: ^2.0.0
-  #image: ^3.0.8
   intl: ^0.19.0
-  #printing: ^5.11.0
   firebase_crashlytics: ^4.3.5
   equatable: ^2.0.5
   docx_template: ^0.4.0
@@ -32,13 +29,14 @@ dependencies:
   image: ^4.0.17
   printing: ^5.9.1
   xml: ^6.4.2
-
-  #file_picker: ^5.2.6
+  shared_preferences: ^2.1.0
   uuid: ^4.3.1
   share_plus: 10.1.4
-  #docx: ^0.5.0
-  #interactive_viewer: ^2.0.0
-  #flutter_portabletext: ^0.9.0
+  flutter_quill_extensions: ^11.0.0
+ 
+ 
+
+  
   
 dev_dependencies:
   flutter_test:
@@ -49,6 +47,5 @@ dependency_overrides:
   ffi: ^2.1.0
   #image: ^3.0.8
   quill_delta: ^3.0.0-nullsafety.2
-  #xml: ^6.4.2
 flutter:
   uses-material-design: true
